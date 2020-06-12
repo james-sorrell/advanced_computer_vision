@@ -1,0 +1,3 @@
+https://www.kaggle.com/zalando-research/fashionmnist
+https://www.kaggle.com/moltean/fruits/version/2
+https://www.kaggle.com/paultimothymooney/blood-cells
