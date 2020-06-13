@@ -44,7 +44,7 @@ def getData(display=True):
 class VGGTransferModel:
   def __init__(self, k):
     # Get VGG feature extractor
-    vgg = keras.applications.VGG16(input_shape=IMAGE_SIZE + [3], weights='imagenet', include_top=False)
+    vgg = keras.applications.VGG19(input_shape=IMAGE_SIZE + [3], weights='imagenet', include_top=False)
     for layer in vgg.layers:
       layer.trainable = False
     x = keras.layers.Flatten()(vgg.output)
@@ -68,6 +68,9 @@ class TransferLearner:
 
   def createImageGenerator(self):
     # create an instance of ImageDataGenerator
+    # You can see that we tell it to use 'preprocess_inut' as
+    # provided by VGG16, this re-orders the channels and makes
+    # preparations to the image such that it's ready for VGG
     self.gen = keras.preprocessing.image.ImageDataGenerator(
       rotation_range=20,
       width_shift_range=0.1,
@@ -97,11 +100,11 @@ class TransferLearner:
       targets = np.concatenate((targets, y))
       if len(targets) >= N:
         break
-
+    # sklearn.metrics confusion matrix
     cm = confusion_matrix(targets, predictions)
     return cm
 
-  def createGenerators(self):
+  def createGenerators(self, test=True):
     # create generators
     self.train_generator = self.gen.flow_from_directory(
       self.train_path,
@@ -115,10 +118,16 @@ class TransferLearner:
       shuffle=True,
       batch_size=BATCH_SIZE,
     )
+    self.labels = [None] * len(self.test_generator.class_indices)
+    for k, v in self.test_generator.class_indices.items():
+      self.labels[v] = k
+    if test is True:
+      self._testGenerator()
+    
 
   def fit(self):
     """ Returns results and confusion matricies """
-    r = self.transfer_model.model.fit_generator(
+    r = self.transfer_model.model.fit(
       self.train_generator,
       validation_data=self.test_generator,
       epochs=EPOCHS,
@@ -131,18 +140,10 @@ class TransferLearner:
     print(test_cm)
     return r, cm, test_cm, self.labels
 
-  def test_generator(self):
-    # test generator to see how it works and some other useful things
-    # get label mapping for confusion matrix plot later
-    test_gen = self.gen.flow_from_directory(self.test_path, target_size=IMAGE_SIZE)
-
-    print(test_gen.class_indices)
-    self.labels = [None] * len(test_gen.class_indices)
-    for k, v in test_gen.class_indices.items():
-      self.labels[v] = k
-
+  def _testGenerator(self):
+    # test generator to see how it works
     # should be a strangely colored image (due to VGG weights being BGR)
-    for x, y in test_gen:
+    for x, y in self.test_generator:
       print("min:", x[0].min(), "max:", x[0].max())
       plt.title(self.labels[np.argmax(y[0])])
       plt.imshow(x[0])
@@ -154,7 +155,6 @@ def main():
   Main Function
   """
   learner = TransferLearner()
-  learner.test_generator()
   learner.createGenerators()
   r, cm, test_cm, labels = learner.fit()
 
