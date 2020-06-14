@@ -1,5 +1,6 @@
 # https://deeplearningcourses.com/c/advanced-computer-vision
 # https://www.udemy.com/advanced-computer-vision
+# Rewritten in Tensorflow 2.2.0 by James Sorrell
 
 import tensorflow as tf
 from tensorflow import keras
@@ -11,14 +12,15 @@ def init_filter(d, mi, mo, stride):
   # Filter initialisation, Xavier
   return (np.random.randn(d, d, mi, mo) * np.sqrt(2.0 / (d * d * mi))).astype(np.float32)
 
-class ConvLayer:
+class ConvLayer(keras.layers.Layer):
   def __init__(self, d, mi, mo, stride=2, padding='VALID'):
-    self.W = tf.Variable(init_filter(d, mi, mo, stride))
-    self.b = tf.Variable(np.zeros(mo, dtype=np.float32))
+    super(ConvLayer, self).__init__()
+    self.W = tf.Variable(init_filter(d, mi, mo, stride), trainable=True)
+    self.b = tf.Variable(np.zeros(mo, dtype=np.float32), trainable=True)
     self.stride = stride
     self.padding = padding
 
-  def forward(self, X):
+  def call(self, X):
     X = tf.nn.conv2d(
       X,
       self.W,
@@ -31,9 +33,8 @@ class ConvLayer:
   def copyFromKerasLayers(self, layer):
     # only 1 layer to copy from
     W, b = layer.get_weights()
-    op1 = self.W.assign(W)
-    op2 = self.b.assign(b)
-    self.session.run((op1, op2))
+    self.W.assign(W)
+    self.b.assign(b)
 
   # def copyFromWeights(self, W, b):
   #   op1 = self.W.assign(W)
@@ -44,14 +45,15 @@ class ConvLayer:
     return [self.W, self.b]
 
 
-class BatchNormLayer:
+class BatchNormLayer(keras.layers.Layer):
   def __init__(self, D):
+    super(BatchNormLayer, self).__init__()
     self.running_mean = tf.Variable(np.zeros(D, dtype=np.float32), trainable=False)
     self.running_var  = tf.Variable(np.ones(D, dtype=np.float32), trainable=False)
-    self.gamma        = tf.Variable(np.ones(D, dtype=np.float32))
-    self.beta         = tf.Variable(np.zeros(D, dtype=np.float32))
+    self.gamma        = tf.Variable(np.ones(D, dtype=np.float32), trainable=True)
+    self.beta         = tf.Variable(np.zeros(D, dtype=np.float32), trainable=True)
 
-  def forward(self, X):
+  def call(self, X):
     return tf.nn.batch_normalization(
       X,
       self.running_mean,
@@ -66,18 +68,18 @@ class BatchNormLayer:
     # order:
     # gamma, beta, moving mean, moving variance
     gamma, beta, running_mean, running_var = layer.get_weights()
-    op1 = self.running_mean.assign(running_mean)
-    op2 = self.running_var.assign(running_var)
-    op3 = self.gamma.assign(gamma)
-    op4 = self.beta.assign(beta)
-    self.session.run((op1, op2, op3, op4))
+    self.running_mean.assign(running_mean)
+    self.running_var.assign(running_var)
+    self.gamma.assign(gamma)
+    self.beta.assign(beta)
 
   def get_params(self):
     return [self.running_mean, self.running_var, self.gamma, self.beta]
 
 
-class ConvBlock:
+class ConvBlock(keras.layers.Layer):
   def __init__(self, mi, fm_sizes, stride=2, activation=tf.nn.relu):
+    super(ConvBlock, self).__init__()
     # conv1, conv2, conv3
     # note: # feature maps shortcut = # feauture maps conv 3
     assert(len(fm_sizes) == 3)
@@ -88,7 +90,6 @@ class ConvBlock:
     # note: stride only applies to conv 1 in main branch
     #       and conv in shortcut, otherwise stride is 1
 
-    self.session = None
     self.f = tf.nn.relu
     
     # init main branch
@@ -113,41 +114,28 @@ class ConvBlock:
       self.convs, self.bns
     ]
 
-    # # this will not be used when input passed in from
-    # # a previous layer
-    # self.input_ = tf.placeholder(tf.float32, shape=(1, 224, 224, mi))
-    # self.output = self.forward(self.input_)
-    self.input = keras.Input(shape=(244, 244, mi), dtype=tf.float32)
-    self.createModel(self.input)
-
-  def createModel(self, X):
-    # main branch
-    FX = keras.layers.Lambda(self.conv1.forward)(X)
-    FX = keras.layers.Lambda(self.conv1.forward)(X)
-    FX = keras.layers.Lambda(self.bn1.forward)(FX)
-    FX = keras.layers.Lambda(self.f)(FX)
-    FX = keras.layers.Lambda(self.conv2.forward)(FX)
-    FX = keras.layers.Lambda(self.bn2.forward)(FX)
-    FX = keras.layers.Lambda(self.f)(FX)
-    FX = keras.layers.Lambda(self.conv3.forward)(FX)
-    FX = keras.layers.Lambda(self.bn3.forward)(FX)
-
+  def call(self, X):
+    FX = self.conv1(X)
+    FX = self.bn1(FX)
+    FX = self.f(FX)
+    FX = self.conv2(FX)
+    FX = self.bn2(FX)
+    FX = self.f(FX)
+    FX = self.conv3(FX)
+    FX = self.bn3(FX)
     # shortcut branch
-    SX = keras.layers.Lambda(self.convs.forward)(X)
-    SX = keras.layers.Lambda(self.bns.forward)(SX)
-    SUM = keras.layers.add([FX, SX])
-    Y = keras.layers.Lambda(self.f)(SUM)
-    self.model = keras.Model(inputs=[X], outputs=[Y])
-
-  def predict(self, X):
-    # assert(self.session is not None)
-    # return self.session.run(
-    #   self.output,
-    #   feed_dict={self.input_: X}
-    # )
-    return self.model(X)
+    SX = self.convs(X)
+    SX = self.bns(SX)
+    # sum + activation
+    Y = self.f(tf.math.add(FX, SX))
+    return Y
 
   def copyFromKerasLayers(self, layers):
+    # print("\nCopying from keras layers:\n")
+    # index = 0
+    # for layer in layers:
+    #   print("\t{} __ {}".format(index , layer))
+    #   index+=1
     # [<keras.layers.convolutional.Conv2D at 0x117bd1978>,
     #  <keras.layers.normalization.BatchNormalization at 0x117bf84a8>,
     #  <keras.layers.core.Activation at 0x117c15fd0>,
@@ -180,5 +168,5 @@ if __name__ == '__main__':
   conv_block = ConvBlock(mi=3, fm_sizes=[64, 64, 256], stride=1)
   # make a fake image
   X = np.random.random((1, 224, 224, 3))
-  output = conv_block.predict(X)
+  output = conv_block(X)
   print("output.shape:", output.shape)
