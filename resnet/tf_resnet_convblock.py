@@ -13,7 +13,8 @@ def init_filter(d, mi, mo, stride):
   return (np.random.randn(d, d, mi, mo) * np.sqrt(2.0 / (d * d * mi))).astype(np.float32)
 
 class ConvLayer(keras.layers.Layer):
-  def __init__(self, d, mi, mo, stride=2, padding='VALID'):
+  # Kernel Size, Input Depth, Number of Filters
+  def __init__(self, d, mi, mo, stride=2, padding='SAME'):
     super(ConvLayer, self).__init__()
     self.W = tf.Variable(init_filter(d, mi, mo, stride), trainable=True)
     self.b = tf.Variable(np.zeros(mo, dtype=np.float32), trainable=True)
@@ -21,25 +22,20 @@ class ConvLayer(keras.layers.Layer):
     self.padding = padding
 
   def call(self, X):
-    X = tf.nn.conv2d(
+    Y = tf.nn.conv2d(
       X,
       self.W,
       strides=[1, self.stride, self.stride, 1],
       padding=self.padding
     )
-    X = X + self.b
-    return X
+    Y += self.b
+    return Y
 
   def copyFromKerasLayers(self, layer):
     # only 1 layer to copy from
     W, b = layer.get_weights()
     self.W.assign(W)
     self.b.assign(b)
-
-  # def copyFromWeights(self, W, b):
-  #   op1 = self.W.assign(W)
-  #   op2 = self.b.assign(b)
-  #   self.session.run((op1, op2))
 
   def get_params(self):
     return [self.W, self.b]
@@ -54,7 +50,7 @@ class BatchNormLayer(keras.layers.Layer):
     self.beta         = tf.Variable(np.zeros(D, dtype=np.float32), trainable=True)
 
   def call(self, X):
-    return tf.nn.batch_normalization(
+    return tf.compat.v1.nn.batch_normalization(
       X,
       self.running_mean,
       self.running_var,
@@ -78,7 +74,7 @@ class BatchNormLayer(keras.layers.Layer):
 
 
 class ConvBlock(keras.layers.Layer):
-  def __init__(self, mi, fm_sizes, stride=2, activation=tf.nn.relu):
+  def __init__(self, mi, fm_sizes, stride=2, activation=tf.compat.v1.nn.relu):
     super(ConvBlock, self).__init__()
     # conv1, conv2, conv3
     # note: # feature maps shortcut = # feauture maps conv 3
@@ -90,7 +86,7 @@ class ConvBlock(keras.layers.Layer):
     # note: stride only applies to conv 1 in main branch
     #       and conv in shortcut, otherwise stride is 1
 
-    self.f = tf.nn.relu
+    self.f = tf.compat.v1.nn.relu
     
     # init main branch
     # Conv -> BN -> F() ---> Conv -> BN -> F() ---> Conv -> BN

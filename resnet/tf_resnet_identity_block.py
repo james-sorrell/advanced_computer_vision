@@ -11,7 +11,7 @@ from tf_resnet_convblock import ConvLayer, BatchNormLayer
 
 
 class IdentityBlock(keras.layers.Layer):
-  def __init__(self, mi, fm_sizes, activation=tf.nn.relu):
+  def __init__(self, mi, fm_sizes, activation=tf.compat.v1.nn.relu):
     super(IdentityBlock, self).__init__()
     # conv1, conv2, conv3
     # note: # feature maps shortcut = # feauture maps conv 3
@@ -21,13 +21,13 @@ class IdentityBlock(keras.layers.Layer):
     #       so we won't bother including it as an arg
 
     self.session = None
-    self.f = tf.nn.relu
+    self.f = tf.compat.v1.nn.relu
     
     # init main branch
     # Conv -> BN -> F() ---> Conv -> BN -> F() ---> Conv -> BN
     self.conv1 = ConvLayer(1, mi, fm_sizes[0], 1)
     self.bn1   = BatchNormLayer(fm_sizes[0])
-    self.conv2 = ConvLayer(3, fm_sizes[0], fm_sizes[1], 1, 'SAME')
+    self.conv2 = ConvLayer(3, fm_sizes[0], fm_sizes[1], 1)
     self.bn2   = BatchNormLayer(fm_sizes[1])
     self.conv3 = ConvLayer(1, fm_sizes[1], fm_sizes[2], 1)
     self.bn3   = BatchNormLayer(fm_sizes[2])
