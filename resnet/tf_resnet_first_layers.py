@@ -56,7 +56,7 @@ class MaxPoolLayer(keras.layers.Layer):
       X,
       ksize=[1, self.dim, self.dim, 1],
       strides=[1, 2, 2, 1],
-      padding='same'
+      padding='SAME'
     )
     return Y
 
@@ -68,15 +68,14 @@ class PartialResNet:
     self.layers = [
       # before conv block
       ConvLayer(d=7, mi=3, mo=64, stride=2, padding='SAME'),
-      #BatchNormLayer(64),
-      #ReLULayer(),
-      #MaxPoolLayer(dim=3),
+      BatchNormLayer(64),
+      ReLULayer(),
+      MaxPoolLayer(dim=3),
       # conv block
-      #ConvBlock(mi=64, fm_sizes=[64, 64, 256], stride=1),
+      ConvBlock(mi=64, fm_sizes=[64, 64, 256], stride=1),
     ]
     self.input_ = keras.Input(shape=(224, 224, 3), dtype=tf.float32)
-    #self.createModel_(self.input_)
-    self.createPartialModel_(self.input_)
+    self.createModel_(self.input_)
 
   def createModel_(self, X):
     Y = X
@@ -87,13 +86,6 @@ class PartialResNet:
     print("\nCreated.\n")
     self.model = keras.Model(inputs=[X], outputs=[Y]) 
 
-  def createPartialModel_(self, X):
-    Y = self.layers[0](X)
-    #Y = self.layers[1](Y)
-    #Y = self.layers[2](Y)
-    print("Created.\n")
-    self.pmodel = keras.Model(inputs=[X], outputs=[Y]) 
-
   def copyFromKerasLayers(self, layers):
     print("\nCopying from keras layers:\n")
     index = 0
@@ -101,8 +93,8 @@ class PartialResNet:
       print("\t{}\t{}\t:{}".format(index , layer.output_shape, layer))
       index+=1
     self.layers[0].copyFromKerasLayers(layers[2])
-    #self.layers[1].copyFromKerasLayers(layers[3])
-    #self.layers[4].copyFromKerasLayers(layers[7:])
+    self.layers[1].copyFromKerasLayers(layers[3])
+    self.layers[4].copyFromKerasLayers(layers[7:])
     print("\nCopied.")
 
 
@@ -110,15 +102,10 @@ if __name__ == '__main__':
   # you can also set weights to None, it doesn't matter
   resnet = keras.applications.resnet50.ResNet50(weights='imagenet')
 
-  # you can determine the correct layer
-  # by looking at resnet.layers in the console
-  # partial_model = keras.Model(
-  #   inputs=resnet.input,
-  #   outputs=resnet.layers[18].output
-  # )
-  # print(partial_model.summary())
-  # for layer in partial_model.layers:
-  #   layer.trainable = False
+  partial_model = keras.Model(
+    inputs=resnet.input,
+    outputs=resnet.layers[18].output
+  )
 
   my_partial_resnet = PartialResNet()
 
@@ -126,42 +113,19 @@ if __name__ == '__main__':
   X = np.random.random((1, 224, 224, 3))
 
   # get keras output
-  #keras_output = partial_model.predict(X)
+  keras_output = partial_model.predict(X)
 
   # copy params from Keras model
-  #my_partial_resnet.copyFromKerasLayers(partial_model.layers)
+  my_partial_resnet.copyFromKerasLayers(partial_model.layers)
 
+  # compare the 2 models
+  output = my_partial_resnet.model(X)
 
-  iop = keras.Model(
-    inputs=resnet.input, 
-    outputs=resnet.layers[2].output
-  )
-  # copy params from Keras model
-  my_partial_resnet.copyFromKerasLayers(iop.layers)
+  print("\nKeras Output Shape: {}".format(keras_output.shape))
+  print("My Output Shape: {}\n".format(output.shape))
 
-
-  print(iop.summary())
-  itm_op = iop.predict(X)
-  my_itm_op = my_partial_resnet.pmodel(X)
-
-  print("ITM_OP : {}".format(itm_op[0, 0, 0, 0:3]))
-  print("MY_ITM_OP : {}".format(my_itm_op[0, 0, 0, 0:3]))
-
-  print("\nIntermediate Outputs: {}, {}".format(itm_op.shape, my_itm_op.shape))
-  diff = np.abs(itm_op - my_itm_op).sum()
+  diff = np.abs(output - keras_output).sum()
   if diff < 1e-10:
     print("Everything's great!")
   else:
     print("Diff = %s" % diff)
-
-  # # compare the 2 models
-  # output = my_partial_resnet.predict(X)
-
-  # print("\nKeras Output Shape: {}".format(keras_output.shape))
-  # print("My Output Shape: {}\n".format(output.shape))
-
-  # diff = np.abs(output - keras_output).sum()
-  # if diff < 1e-10:
-  #   print("Everything's great!")
-  # else:
-  #   print("Diff = %s" % diff)
